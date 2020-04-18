@@ -1,0 +1,35 @@
+################ start daemons ################
+
+# sheard coprocess: prunes trace file
+#
+# monitors total count of events in CPU buffers and prunes the trace file once
+# count reaches pre-determined threshold
+sheard () {
+        info started...snip snip!
+        while :; do
+                sumevents
+                if [ $events -gt $threshold ]; then
+#                        debug `egrep '(entr|ts)' $debugfs/tracing/per_cpu/cpu*/stats`
+                        > $debugfs/tracing/trace
+#                        debug `egrep '(entr|ts)' $debugfs/tracing/per_cpu/cpu*/stats`
+                        info pruned $events
+                fi
+	        sleep $pollint
+        done
+        info exiting
+}
+
+# beepd coprocess: reads $debugfs/tracing/trace_pipe and beeps $pid as frequency
+#
+# by default we ignore PIDs > 20000 as humans can't hear above this
+#
+# if doing additional operations to the frequency prior to beeping you may want
+# to remove this restriction
+beepd () {
+        info started...beep beep!
+        while read < $debugfs/tracing/trace_pipe; do
+                pid=${REPLY##*pid=}; pid=${pid%% *}
+                [ $pid -le 20000 ] && beep -f $pid -l $length >& /dev/null
+        done
+        info exiting
+}

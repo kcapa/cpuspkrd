@@ -1,0 +1,118 @@
+############### start functions ###############
+#debug logging (useful beacon)
+debug () {
+        [[ $debug -eq 1 ]] && echo -e "[DBG] `date +"%b %d %H:%M:%S"` ${FUNCNAME[1]}:${BASH_LINENO[0]}: $*" >> $log
+}
+
+#info logging
+info () {
+        echo -e "[INF] `date +"%b %d %H:%M:%S"` ${FUNCNAME[1]}: $*" >> $log
+}
+
+#error logging
+error () {
+        echo -e "[ERR] `date +"%b %d %H:%M:%S"` ${FUNCNAME[1]}:${BASH_LINENO[0]}: $*" >> $log
+}
+
+# signal handler for trap actions
+handler () {
+        case $1 in
+		"SIGINT"		) cleanup ;;
+		"SIGHUP"		) reload ;;
+        esac
+}
+
+# reload config and filter
+reload () {
+        info reloading configuration
+        . $config
+        [ $? -ne 0 ] && error could not reload configuration $config || info successful
+        debugoff
+        genfilter
+        debugon
+	monitor
+}
+
+# disable debugging
+debugoff () {
+        > $event/enable
+        > $event/filter
+        info debugging disabled
+}
+
+# enable debugging
+debugon () {
+        echo 1 > $event/enable
+        info debugging enabled
+}
+
+# sum event buffer count from each CPU
+# subtract 1 from $cpucount to get total CPUs
+sumevents () {
+        events=0
+	i=0
+        while [ $i -lt $cpucount ]; do
+                mapfile -O $i -n 1 cpuevent < $debugfs/tracing/per_cpu/cpu$i/stats
+                events=$(( $events + ${cpuevent[$i]:9} ))
+		i=$(( $i + 1 ))
+        done
+}
+
+#cleanup beepd and sheard return control back to user
+cleanup () {
+	info casting daemons to a most fiery of hells, master
+        # cleanup beepd
+        info killing beepd...
+        kill $beepd_PID
+        debug kill returned $?
+
+        info signal sent, waiting one second...
+        sleep 1
+
+        info checking beepd...
+        ps -p $pidbeepd &> /dev/null
+        [ $? -ne 0 ] && info beepd death confirmed || error pid $pidbeepd still found, manually kill
+
+        # cleanup sheard
+        info killing sheard...
+        kill $sheard_PID
+        debug kill returned $?
+
+        info signal sent, waiting one second...
+        sleep 1
+
+        info checking sheard...
+        ps -p $pidsheard &> /dev/null
+        [ $? -ne 0 ] && info sheard death confirmed || error pid $pidsheard still found, manually kill
+
+        # disable debugging
+        debugoff
+        info all yours, captain
+	exit 0
+}
+
+# generate and set filter
+genfilter () {
+        # set filter string to program name
+        fstring="comm!=$name"
+
+        # append excluded commands to filter string
+        for i in $comms; do
+                fstring=$fstring' && comm!='$i
+        done
+
+        debug fstring=$fstring
+        echo $fstring > $event/$filter
+        [ $? -eq 0 ] && info set event filter in $event || error exit $?: unable to set filter $fstring
+}
+
+# display some informational stats while cpuspkr is running
+monitor () {
+	wait
+#	while :;do
+#	        sleep 600
+#	        info Load: `cat /proc/loadavg`
+#		sumevents
+#	        info CPU Buffers: $events
+#	done
+}

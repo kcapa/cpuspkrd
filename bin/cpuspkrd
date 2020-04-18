@@ -1,0 +1,55 @@
+#!/bin/bash
+
+############### start init ####################
+[ $# -ne 1 ] && config=/opt/cpuspkrd/etc/cpuspkrd.conf || config=$1
+
+### imports ###
+. $config
+. $shareddir/functions
+. $shareddir/daemons
+
+### traps ###
+trap 'error TRAP "caught exception: line $LINENO"' ERR
+trap 'handler "SIGINT"' SIGINT
+trap 'handler "SIGHUP"' SIGHUP
+
+### static variables ###
+#my name 
+name=`basename $0`
+# detect number of CPUs (need to improve)
+cpucount=`grep processor /proc/cpuinfo|wc -l`
+# filter location (relative to $debugfs/$event)
+filter=filter
+############### end init ######################
+
+
+################# start main #################
+
+# give some information about things
+info log file: $log
+info send a SIGINT to $BASHPID to terminate gracefully \(Hint: Ctrl-C\)
+info send a SIGHUP to $BASHPID to reload filter/debugging
+
+# disable any previous debugging
+debugoff
+
+debug detected $cpucount logical CPUs
+
+# start sheard
+coproc sheard { sheard ;}
+info sheard PID is $sheard_PID, saving
+pidsheard=$sheard_PID
+
+# start beepd
+coproc beepd { beepd ;}
+info beepd PID is $beepd_PID, saving
+pidbeepd=$beepd_PID
+# generate a filter
+genfilter
+
+# enable debugging
+debugon
+
+info we are live, sleeping...
+wait
+################## end main ##################
